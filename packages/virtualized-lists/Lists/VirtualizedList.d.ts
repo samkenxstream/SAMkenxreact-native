@@ -23,7 +23,7 @@ export interface ViewToken {
   key: string;
   index: number | null;
   isViewable: boolean;
-  section?: any;
+  section?: any | undefined;
 }
 
 export interface ViewabilityConfig {
@@ -86,6 +86,16 @@ export interface ListRenderItemInfo<ItemT> {
 export type ListRenderItem<ItemT> = (
   info: ListRenderItemInfo<ItemT>,
 ) => React.ReactElement | null;
+
+export interface CellRendererProps<ItemT> {
+  cellKey: string;
+  children: React.ReactNode;
+  index: number;
+  item: ItemT;
+  onFocusCapture?: ((event: FocusEvent) => void) | undefined;
+  onLayout?: ((event: LayoutChangeEvent) => void) | undefined;
+  style: StyleProp<ViewStyle> | undefined;
+}
 
 /**
  * @see https://reactnative.dev/docs/virtualizedlist
@@ -188,7 +198,7 @@ export interface VirtualizedListWithoutRenderItemProps<ItemT>
    * The default accessor functions assume this is an Array<{key: string}> but you can override
    * getItem, getItemCount, and keyExtractor to handle any type of index-based data.
    */
-  data?: any;
+  data?: any | undefined;
 
   /**
    * `debug` will turn on extra logging and visual overlays to aid with debugging both usage and
@@ -208,7 +218,7 @@ export interface VirtualizedListWithoutRenderItemProps<ItemT>
    * any of your `renderItem`, Header, Footer, etc. functions depend on anything outside of the
    * `data` prop, stick it here and treat it immutably.
    */
-  extraData?: any;
+  extraData?: any | undefined;
 
   /**
    * A generic accessor for extracting an item from any sort of data blob.
@@ -370,5 +380,14 @@ export interface VirtualizedListWithoutRenderItemProps<ItemT>
    */
   windowSize?: number | undefined;
 
-  CellRendererComponent?: React.ComponentType<any> | undefined;
+  /**
+   * CellRendererComponent allows customizing how cells rendered by
+   * `renderItem`/`ListItemComponent` are wrapped when placed into the
+   * underlying ScrollView. This component must accept event handlers which
+   * notify VirtualizedList of changes within the cell.
+   */
+  CellRendererComponent?:
+    | React.ComponentType<CellRendererProps<ItemT>>
+    | null
+    | undefined;
 }

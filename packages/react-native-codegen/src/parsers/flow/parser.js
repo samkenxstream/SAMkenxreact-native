@@ -18,19 +18,24 @@ import type {
   NativeModuleParamTypeAnnotation,
   NativeModuleEnumMemberType,
   NativeModuleEnumMembers,
+  NativeModuleAliasMap,
+  NativeModuleEnumMap,
 } from '../../CodegenSchema';
 import type {ParserType} from '../errors';
 import type {Parser} from '../parser';
-import type {TypeDeclarationMap} from '../utils';
+import type {ParserErrorCapturer, TypeDeclarationMap} from '../utils';
+
+const {flowTranslateTypeAnnotation} = require('./modules');
 
 // $FlowFixMe[untyped-import] there's no flowtype flow-parser
 const flowParser = require('flow-parser');
 
 const {buildSchema} = require('../parsers-commons');
-const {Visitor} = require('./Visitor');
+const {Visitor} = require('../parsers-primitives');
 const {buildComponentSchema} = require('./components');
 const {wrapComponentSchema} = require('../schema.js');
-const {buildModuleSchema} = require('./modules');
+const {buildModuleSchema} = require('../parsers-commons.js');
+const {resolveTypeAnnotation} = require('./utils');
 
 const fs = require('fs');
 
@@ -101,6 +106,8 @@ class FlowParser implements Parser {
       buildModuleSchema,
       Visitor,
       this,
+      resolveTypeAnnotation,
+      flowTranslateTypeAnnotation,
     );
   }
 
@@ -256,6 +263,55 @@ class FlowParser implements Parser {
 
   callExpressionTypeParameters(callExpression: $FlowFixMe): $FlowFixMe | null {
     return callExpression.typeArguments || null;
+  }
+
+  computePartialProperties(
+    properties: Array<$FlowFixMe>,
+    hasteModuleName: string,
+    types: TypeDeclarationMap,
+    aliasMap: {...NativeModuleAliasMap},
+    enumMap: {...NativeModuleEnumMap},
+    tryParse: ParserErrorCapturer,
+    cxxOnly: boolean,
+  ): Array<$FlowFixMe> {
+    return properties.map(prop => {
+      return {
+        name: prop.key.name,
+        optional: true,
+        typeAnnotation: flowTranslateTypeAnnotation(
+          hasteModuleName,
+          prop.value,
+          types,
+          aliasMap,
+          enumMap,
+          tryParse,
+          cxxOnly,
+          this,
+        ),
+      };
+    });
+  }
+
+  functionTypeAnnotation(propertyValueType: string): boolean {
+    return propertyValueType === 'FunctionTypeAnnotation';
+  }
+
+  getTypeArgumentParamsFromDeclaration(declaration: $FlowFixMe): $FlowFixMe {
+    return declaration.typeArguments.params;
+  }
+
+  /**
+   * This FlowFixMe is supposed to refer to typeArgumentParams and
+   * funcArgumentParams of generated AST.
+   */
+  getNativeComponentType(
+    typeArgumentParams: $FlowFixMe,
+    funcArgumentParams: $FlowFixMe,
+  ): {[string]: string} {
+    return {
+      propsTypeName: typeArgumentParams[0].id.name,
+      componentName: funcArgumentParams[0].value,
+    };
   }
 }
 

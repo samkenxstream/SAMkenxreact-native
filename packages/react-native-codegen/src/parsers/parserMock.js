@@ -20,8 +20,10 @@ import type {
   NativeModuleParamTypeAnnotation,
   NativeModuleEnumMemberType,
   NativeModuleEnumMembers,
+  NativeModuleAliasMap,
+  NativeModuleEnumMap,
 } from '../CodegenSchema';
-import type {TypeDeclarationMap} from './utils';
+import type {ParserErrorCapturer, TypeDeclarationMap} from './utils';
 
 // $FlowFixMe[untyped-import] there's no flowtype flow-parser
 const flowParser = require('flow-parser');
@@ -183,5 +185,46 @@ export class MockedParser implements Parser {
 
   callExpressionTypeParameters(callExpression: $FlowFixMe): $FlowFixMe | null {
     return callExpression.typeArguments || null;
+  }
+
+  computePartialProperties(
+    properties: Array<$FlowFixMe>,
+    hasteModuleName: string,
+    types: TypeDeclarationMap,
+    aliasMap: {...NativeModuleAliasMap},
+    enumMap: {...NativeModuleEnumMap},
+    tryParse: ParserErrorCapturer,
+    cxxOnly: boolean,
+  ): Array<$FlowFixMe> {
+    return [
+      {
+        name: 'a',
+        optional: true,
+        typeAnnotation: {type: 'StringTypeAnnotation'},
+      },
+      {
+        name: 'b',
+        optional: true,
+        typeAnnotation: {type: 'BooleanTypeAnnotation'},
+      },
+    ];
+  }
+
+  functionTypeAnnotation(propertyValueType: string): boolean {
+    return propertyValueType === 'FunctionTypeAnnotation';
+  }
+
+  getTypeArgumentParamsFromDeclaration(declaration: $FlowFixMe): $FlowFixMe {
+    return declaration.typeArguments.params;
+  }
+
+  getNativeComponentType(
+    typeArgumentParams: $FlowFixMe,
+    funcArgumentParams: $FlowFixMe,
+  ): {[string]: string} {
+    return {
+      propsTypeName: typeArgumentParams[0].id.name,
+      componentName: funcArgumentParams[0].value,
+    };
   }
 }

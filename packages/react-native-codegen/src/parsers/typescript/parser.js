@@ -18,19 +18,24 @@ import type {
   NativeModuleParamTypeAnnotation,
   NativeModuleEnumMembers,
   NativeModuleEnumMemberType,
+  NativeModuleAliasMap,
+  NativeModuleEnumMap,
 } from '../../CodegenSchema';
 import type {ParserType} from '../errors';
 import type {Parser} from '../parser';
-import type {TypeDeclarationMap} from '../utils';
+import type {ParserErrorCapturer, TypeDeclarationMap} from '../utils';
+
+const {typeScriptTranslateTypeAnnotation} = require('./modules');
 
 // $FlowFixMe[untyped-import] Use flow-types for @babel/parser
 const babelParser = require('@babel/parser');
 
 const {buildSchema} = require('../parsers-commons');
-const {Visitor} = require('./Visitor');
+const {Visitor} = require('../parsers-primitives');
 const {buildComponentSchema} = require('./components');
 const {wrapComponentSchema} = require('../schema.js');
-const {buildModuleSchema} = require('./modules');
+const {buildModuleSchema} = require('../parsers-commons.js');
+const {resolveTypeAnnotation} = require('./utils');
 
 const fs = require('fs');
 
@@ -103,6 +108,8 @@ class TypeScriptParser implements Parser {
       buildModuleSchema,
       Visitor,
       this,
+      resolveTypeAnnotation,
+      typeScriptTranslateTypeAnnotation,
     );
   }
 
@@ -243,7 +250,57 @@ class TypeScriptParser implements Parser {
   callExpressionTypeParameters(callExpression: $FlowFixMe): $FlowFixMe | null {
     return callExpression.typeParameters || null;
   }
+
+  computePartialProperties(
+    properties: Array<$FlowFixMe>,
+    hasteModuleName: string,
+    types: TypeDeclarationMap,
+    aliasMap: {...NativeModuleAliasMap},
+    enumMap: {...NativeModuleEnumMap},
+    tryParse: ParserErrorCapturer,
+    cxxOnly: boolean,
+  ): Array<$FlowFixMe> {
+    return properties.map(prop => {
+      return {
+        name: prop.key.name,
+        optional: true,
+        typeAnnotation: typeScriptTranslateTypeAnnotation(
+          hasteModuleName,
+          prop.typeAnnotation.typeAnnotation,
+          types,
+          aliasMap,
+          enumMap,
+          tryParse,
+          cxxOnly,
+          this,
+        ),
+      };
+    });
+  }
+
+  functionTypeAnnotation(propertyValueType: string): boolean {
+    return (
+      propertyValueType === 'TSFunctionType' ||
+      propertyValueType === 'TSMethodSignature'
+    );
+  }
+
+  getTypeArgumentParamsFromDeclaration(declaration: $FlowFixMe): $FlowFixMe {
+    return declaration.typeParameters.params;
+  }
+
+  // This FlowFixMe is supposed to refer to typeArgumentParams and funcArgumentParams of generated AST.
+  getNativeComponentType(
+    typeArgumentParams: $FlowFixMe,
+    funcArgumentParams: $FlowFixMe,
+  ): {[string]: string} {
+    return {
+      propsTypeName: typeArgumentParams[0].typeName.name,
+      componentName: funcArgumentParams[0].value,
+    };
+  }
 }
+
 module.exports = {
   TypeScriptParser,
 };

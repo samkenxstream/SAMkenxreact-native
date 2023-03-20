@@ -110,6 +110,152 @@ describe('FlowParser', () => {
       expect(parser.callExpressionTypeParameters(node)).toBe(null);
     });
   });
+
+  describe('computePartialProperties', () => {
+    it('returns partial properties', () => {
+      const properties = [
+        {
+          type: 'ObjectTypeProperty',
+          key: {
+            type: 'Identifier',
+            name: 'a',
+          },
+          value: {
+            type: 'StringTypeAnnotation',
+            range: [],
+          },
+        },
+        {
+          type: 'ObjectTypeProperty',
+          key: {
+            type: 'Identifier',
+            name: 'b',
+          },
+          optional: true,
+          value: {
+            type: 'BooleanTypeAnnotation',
+            range: [],
+          },
+        },
+      ];
+
+      const expected = [
+        {
+          name: 'a',
+          optional: true,
+          typeAnnotation: {type: 'StringTypeAnnotation'},
+        },
+        {
+          name: 'b',
+          optional: true,
+          typeAnnotation: {type: 'BooleanTypeAnnotation'},
+        },
+      ];
+
+      expect(
+        parser.computePartialProperties(
+          properties,
+          'hasteModuleName',
+          {},
+          {},
+          {},
+          () => null,
+          false,
+        ),
+      ).toEqual(expected);
+    });
+  });
+
+  describe('getTypeArgumentParamsFromDeclaration', () => {
+    it('returns type arguments params from declaration', () => {
+      const declaration = {
+        type: 'TypeAlias',
+        typeArguments: {
+          type: 'TypeParameterDeclaration',
+          params: [
+            {
+              type: 'TypeParameter',
+              name: 'T',
+            },
+          ],
+        },
+      };
+
+      const expected = [
+        {
+          type: 'TypeParameter',
+          name: 'T',
+        },
+      ];
+
+      expect(parser.getTypeArgumentParamsFromDeclaration(declaration)).toEqual(
+        expected,
+      );
+    });
+
+    it('returns undefined if declaration type argument params is Invalid', () => {
+      const declaration = {
+        type: 'TypeAlias',
+        typeArguments: {
+          type: 'TypeParameterDeclaration',
+        },
+      };
+
+      expect(parser.getTypeArgumentParamsFromDeclaration(declaration)).toEqual(
+        undefined,
+      );
+    });
+  });
+
+  describe('getNativeComponentType', () => {
+    it('returns native component type when typeArgumentParams & funcArgumentParams are valid', () => {
+      const typeArgumentParams = [
+        {
+          type: 'TypeParameter',
+          name: 'T',
+          id: {
+            name: 'T',
+          },
+        },
+      ];
+
+      const funcArgumentParams = [
+        {
+          type: 'StringLiteral',
+          value: 'componentName',
+        },
+      ];
+
+      const expected = {
+        propsTypeName: 'T' /* typeArgumentParams[0].id.name */,
+        componentName: 'componentName' /* funcArgumentParams[0].value */,
+      };
+
+      expect(
+        parser.getNativeComponentType(typeArgumentParams, funcArgumentParams),
+      ).toEqual(expected);
+    });
+
+    it('returns undefined when typeArgumentParams & funcArgumentParams are invalid', () => {
+      const typeArgumentParams = [
+        {
+          type: 'TypeParameter',
+          name: 'T',
+          id: {},
+        },
+      ];
+      const funcArgumentParams = [{}];
+
+      const expected = {
+        propsTypeName: undefined /* typeArgumentParams[0].id.name */,
+        componentName: undefined /* funcArgumentParams[0].value */,
+      };
+
+      expect(
+        parser.getNativeComponentType(typeArgumentParams, funcArgumentParams),
+      ).toEqual(expected);
+    });
+  });
 });
 
 describe('TypeScriptParser', () => {
@@ -200,6 +346,163 @@ describe('TypeScriptParser', () => {
     it('returns null if it is a invalid node', () => {
       const node = {};
       expect(parser.callExpressionTypeParameters(node)).toBe(null);
+    });
+  });
+
+  describe('computePartialProperties', () => {
+    it('returns partial properties', () => {
+      const properties = [
+        {
+          type: 'TSPropertySignature',
+          key: {
+            type: 'Identifier',
+            name: 'a',
+          },
+          typeAnnotation: {
+            type: 'TSTypeAnnotation',
+            typeAnnotation: {
+              type: 'TSTypeLiteral',
+              key: {
+                type: 'Identifier',
+                name: 'a',
+              },
+              members: [],
+            },
+          },
+        },
+        {
+          type: 'TSPropertySignature',
+          key: {
+            type: 'Identifier',
+            name: 'b',
+          },
+          optional: true,
+          typeAnnotation: {
+            type: 'TSTypeAnnotation',
+            typeAnnotation: {
+              type: 'TSStringKeyword',
+              key: {
+                type: 'Identifier',
+                name: 'b',
+              },
+              members: [],
+            },
+          },
+        },
+      ];
+
+      const expected = [
+        {
+          name: 'a',
+          optional: true,
+          typeAnnotation: {properties: [], type: 'ObjectTypeAnnotation'},
+        },
+        {
+          name: 'b',
+          optional: true,
+          typeAnnotation: {type: 'StringTypeAnnotation'},
+        },
+      ];
+
+      expect(
+        parser.computePartialProperties(
+          properties,
+          'hasteModuleName',
+          {},
+          {},
+          {},
+          () => null,
+          false,
+        ),
+      ).toEqual(expected);
+    });
+  });
+
+  describe('getTypeArgumentParamsFromDeclaration', () => {
+    it('returns type argument params from declaration', () => {
+      const declaration = {
+        type: 'TypeAlias',
+        typeParameters: {
+          type: 'TypeParameterDeclaration',
+          params: [
+            {
+              type: 'TypeParameter',
+              name: 'T',
+            },
+          ],
+        },
+      };
+
+      const expected = [
+        {
+          type: 'TypeParameter',
+          name: 'T',
+        },
+      ];
+
+      expect(parser.getTypeArgumentParamsFromDeclaration(declaration)).toEqual(
+        expected,
+      );
+    });
+
+    it('returns undefined if declaration type arguments params is Invalid', () => {
+      const declaration = {
+        type: 'TypeAlias',
+        typeParameters: {},
+      };
+
+      expect(parser.getTypeArgumentParamsFromDeclaration(declaration)).toEqual(
+        undefined,
+      );
+    });
+  });
+
+  describe('getNativeComponentType', () => {
+    it('returns native component type when typeArgumentParams & funcArgumentParams are valid', () => {
+      const typeArgumentParams = [
+        {
+          typeName: {
+            type: 'Identifier',
+            name: 'T',
+          },
+        },
+      ];
+
+      const funcArgumentParams = [
+        {
+          type: 'ObjectTypeAnnotation',
+          value: 'StringTypeAnnotation',
+        },
+      ];
+
+      const expected = {
+        propsTypeName: 'T' /* typeArgumentParams[0].typeName.name */,
+        componentName: 'StringTypeAnnotation' /* funcArgumentParams[0].value */,
+      };
+
+      expect(
+        parser.getNativeComponentType(typeArgumentParams, funcArgumentParams),
+      ).toEqual(expected);
+    });
+
+    it('returns undefined when typeArgumentParams & funcArgumentParams are invalid', () => {
+      const typeArgumentParams = [
+        {
+          typeName: {
+            type: 'Invalid',
+          },
+        },
+      ];
+      const funcArgumentParams = [{}];
+
+      const expected = {
+        propsTypeName: undefined /* typeArgumentParams[0].typeName.name */,
+        componentName: undefined /* funcArgumentParams[0].value */,
+      };
+
+      expect(
+        parser.getNativeComponentType(typeArgumentParams, funcArgumentParams),
+      ).toEqual(expected);
     });
   });
 });
