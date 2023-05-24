@@ -22,8 +22,19 @@ import type {
   NativeModuleEnumMap,
 } from '../../CodegenSchema';
 import type {ParserType} from '../errors';
-import type {GetSchemaInfoFN, GetTypeAnnotationFN, Parser} from '../parser';
-import type {ParserErrorCapturer, TypeDeclarationMap, PropAST} from '../utils';
+import type {
+  GetSchemaInfoFN,
+  GetTypeAnnotationFN,
+  Parser,
+  ResolveTypeAnnotationFN,
+} from '../parser';
+import type {
+  ParserErrorCapturer,
+  TypeDeclarationMap,
+  PropAST,
+  TypeResolutionStatus,
+} from '../utils';
+const invariant = require('invariant');
 
 const {typeScriptTranslateTypeAnnotation} = require('./modules');
 
@@ -35,12 +46,11 @@ const {Visitor} = require('../parsers-primitives');
 const {buildComponentSchema} = require('./components');
 const {wrapComponentSchema} = require('../schema.js');
 const {buildModuleSchema} = require('../parsers-commons.js');
-const {resolveTypeAnnotation} = require('./utils');
+const {parseTopLevelType} = require('./parseTopLevelType');
 const {
   getSchemaInfo,
   getTypeAnnotation,
 } = require('./components/componentsUtils');
-
 const fs = require('fs');
 
 const {
@@ -49,6 +59,11 @@ const {
 
 class TypeScriptParser implements Parser {
   typeParameterInstantiation: string = 'TSTypeParameterInstantiation';
+  typeAlias: string = 'TSTypeAliasDeclaration';
+  enumDeclaration: string = 'TSEnumDeclaration';
+  interfaceDeclaration: string = 'TSInterfaceDeclaration';
+
+  nullLiteralTypeAnnotation: string = 'TSNullKeyword';
 
   isProperty(property: $FlowFixMe): boolean {
     return property.type === 'TSPropertySignature';
@@ -112,7 +127,6 @@ class TypeScriptParser implements Parser {
       buildModuleSchema,
       Visitor,
       this,
-      resolveTypeAnnotation,
       typeScriptTranslateTypeAnnotation,
     );
   }
@@ -351,6 +365,97 @@ class TypeScriptParser implements Parser {
 
   getGetTypeAnnotationFN(): GetTypeAnnotationFN {
     return getTypeAnnotation;
+  }
+
+  getResolvedTypeAnnotation(
+    // TODO(T108222691): Use flow-types for @babel/parser
+    typeAnnotation: $FlowFixMe,
+    types: TypeDeclarationMap,
+    parser: Parser,
+  ): {
+    nullable: boolean,
+    typeAnnotation: $FlowFixMe,
+    typeResolutionStatus: TypeResolutionStatus,
+  } {
+    invariant(
+      typeAnnotation != null,
+      'resolveTypeAnnotation(): typeAnnotation cannot be null',
+    );
+
+    let node =
+      typeAnnotation.type === 'TSTypeAnnotation'
+        ? typeAnnotation.typeAnnotation
+        : typeAnnotation;
+    let nullable = false;
+    let typeResolutionStatus: TypeResolutionStatus = {
+      successful: false,
+    };
+
+    for (;;) {
+      const topLevelType = parseTopLevelType(node);
+      nullable = nullable || topLevelType.optional;
+      node = topLevelType.type;
+
+      if (node.type !== 'TSTypeReference') {
+        break;
+      }
+
+      const resolvedTypeAnnotation = types[node.typeName.name];
+      if (resolvedTypeAnnotation == null) {
+        break;
+      }
+
+      switch (resolvedTypeAnnotation.type) {
+        case parser.typeAlias: {
+          typeResolutionStatus = {
+            successful: true,
+            type: 'alias',
+            name: node.typeName.name,
+          };
+          node = resolvedTypeAnnotation.typeAnnotation;
+          break;
+        }
+        case parser.interfaceDeclaration: {
+          typeResolutionStatus = {
+            successful: true,
+            type: 'alias',
+            name: node.typeName.name,
+          };
+          node = resolvedTypeAnnotation;
+          break;
+        }
+        case parser.enumDeclaration: {
+          typeResolutionStatus = {
+            successful: true,
+            type: 'enum',
+            name: node.typeName.name,
+          };
+          node = resolvedTypeAnnotation;
+          break;
+        }
+        default: {
+          throw new TypeError(
+            `A non GenericTypeAnnotation must be a type declaration ('${parser.typeAlias}'), an interface ('${parser.interfaceDeclaration}'), or enum ('${parser.enumDeclaration}'). Instead, got the unsupported ${resolvedTypeAnnotation.type}.`,
+          );
+        }
+      }
+    }
+
+    return {
+      nullable: nullable,
+      typeAnnotation: node,
+      typeResolutionStatus,
+    };
+  }
+
+  getResolveTypeAnnotationFN(): ResolveTypeAnnotationFN {
+    return (
+      typeAnnotation: $FlowFixMe,
+      types: TypeDeclarationMap,
+      parser: Parser,
+    ) => {
+      return this.getResolvedTypeAnnotation(typeAnnotation, types, parser);
+    };
   }
 }
 

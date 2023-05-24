@@ -22,8 +22,20 @@ import type {
   NativeModuleEnumMap,
 } from '../../CodegenSchema';
 import type {ParserType} from '../errors';
-import type {GetSchemaInfoFN, GetTypeAnnotationFN, Parser} from '../parser';
-import type {ParserErrorCapturer, TypeDeclarationMap, PropAST} from '../utils';
+import type {
+  GetSchemaInfoFN,
+  GetTypeAnnotationFN,
+  Parser,
+  ResolveTypeAnnotationFN,
+} from '../parser';
+import type {
+  ParserErrorCapturer,
+  TypeDeclarationMap,
+  PropAST,
+  TypeResolutionStatus,
+} from '../utils';
+
+const invariant = require('invariant');
 
 const {
   getSchemaInfo,
@@ -40,7 +52,6 @@ const {Visitor} = require('../parsers-primitives');
 const {buildComponentSchema} = require('./components');
 const {wrapComponentSchema} = require('../schema.js');
 const {buildModuleSchema} = require('../parsers-commons.js');
-const {resolveTypeAnnotation} = require('./utils');
 
 const fs = require('fs');
 
@@ -50,6 +61,10 @@ const {
 
 class FlowParser implements Parser {
   typeParameterInstantiation: string = 'TypeParameterInstantiation';
+  typeAlias: string = 'TypeAlias';
+  enumDeclaration: string = 'EnumDeclaration';
+  interfaceDeclaration: string = 'InterfaceDeclaration';
+  nullLiteralTypeAnnotation: string = 'NullLiteralTypeAnnotation';
 
   isProperty(property: $FlowFixMe): boolean {
     return property.type === 'ObjectTypeProperty';
@@ -111,7 +126,6 @@ class FlowParser implements Parser {
       buildModuleSchema,
       Visitor,
       this,
-      resolveTypeAnnotation,
       flowTranslateTypeAnnotation,
     );
   }
@@ -355,6 +369,81 @@ class FlowParser implements Parser {
 
   getGetTypeAnnotationFN(): GetTypeAnnotationFN {
     return getTypeAnnotation;
+  }
+
+  getResolvedTypeAnnotation(
+    typeAnnotation: $FlowFixMe,
+    types: TypeDeclarationMap,
+    parser: Parser,
+  ): {
+    nullable: boolean,
+    typeAnnotation: $FlowFixMe,
+    typeResolutionStatus: TypeResolutionStatus,
+  } {
+    invariant(
+      typeAnnotation != null,
+      'resolveTypeAnnotation(): typeAnnotation cannot be null',
+    );
+
+    let node = typeAnnotation;
+    let nullable = false;
+    let typeResolutionStatus: TypeResolutionStatus = {
+      successful: false,
+    };
+
+    for (;;) {
+      if (node.type === 'NullableTypeAnnotation') {
+        nullable = true;
+        node = node.typeAnnotation;
+        continue;
+      }
+
+      if (node.type !== 'GenericTypeAnnotation') {
+        break;
+      }
+
+      const resolvedTypeAnnotation = types[node.id.name];
+      if (resolvedTypeAnnotation == null) {
+        break;
+      }
+
+      switch (resolvedTypeAnnotation.type) {
+        case parser.typeAlias: {
+          typeResolutionStatus = {
+            successful: true,
+            type: 'alias',
+            name: node.id.name,
+          };
+          node = resolvedTypeAnnotation.right;
+          break;
+        }
+        case parser.enumDeclaration: {
+          typeResolutionStatus = {
+            successful: true,
+            type: 'enum',
+            name: node.id.name,
+          };
+          node = resolvedTypeAnnotation.body;
+          break;
+        }
+        default: {
+          throw new TypeError(
+            `A non GenericTypeAnnotation must be a type declaration ('${parser.typeAlias}') or enum ('${parser.enumDeclaration}'). Instead, got the unsupported ${resolvedTypeAnnotation.type}.`,
+          );
+        }
+      }
+    }
+
+    return {
+      nullable: nullable,
+      typeAnnotation: node,
+      typeResolutionStatus,
+    };
+  }
+
+  getResolveTypeAnnotationFN(): ResolveTypeAnnotationFN {
+    return (typeAnnotation, types, parser) =>
+      this.getResolvedTypeAnnotation(typeAnnotation, types, parser);
   }
 }
 
